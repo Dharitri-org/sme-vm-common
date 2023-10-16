@@ -77,7 +77,7 @@ type ContractCreateInput struct {
 
 	// ContractCode is the code of the contract being created, assembled into a byte array.
 	// For Iele VM, to convert a .iele file to this assembled byte array, see
-	// src/github.com/Dharitri-org/sme-vm/iele/compiler/compiler.AssembleIeleCode
+	// src/github.com/Dhartri-org/sme-vm/iele/compiler/compiler.AssembleIeleCode
 	ContractCode []byte
 
 	// ContractCodeMetadata is the code metadata of the contract being created.
@@ -94,4 +94,8 @@ type ContractCallInput struct {
 	// Function is the name of the smart contract function that will be called.
 	// The function must be public (e.g. in Iele `define public @functionName(...)`)
 	Function string
+
+	// AllowInitFunction specifies whether calling the initialization method of
+	// the smart contract is allowed or not
+	AllowInitFunction bool
 }
