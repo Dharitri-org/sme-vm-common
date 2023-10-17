@@ -7,5 +7,5 @@
 [![](https://img.shields.io/badge/made%20by-Dharitri%20Network-blue.svg?style=flat-square)](http://dharitri.org/)
 [![](https://img.shields.io/badge/project-Dharitri%20Network%20Testnet-blue.svg?style=flat-square)](http://dharitri.org/)
 
-# sme-vm-common
+# dharitri-vm-common
 Common structs between VM and node
