@@ -90,11 +90,11 @@ func IsSmartContractOnMetachain(identifier []byte, rcvAddress []byte) bool {
 
 // IsAllowedToSaveUnderKey returns if saving key-value in data tries under given key is allowed
 func IsAllowedToSaveUnderKey(key []byte) bool {
-	prefixLen := len(core.DharitriProtectedKeyPrefix)
+	prefixLen := len(core.ProtectedKeyPrefix)
 	if len(key) < prefixLen {
 		return true
 	}
 
 	trimmedKey := key[:prefixLen]
-	return !bytes.Equal(trimmedKey, []byte(core.DharitriProtectedKeyPrefix))
+	return !bytes.Equal(trimmedKey, []byte(core.ProtectedKeyPrefix))
 }

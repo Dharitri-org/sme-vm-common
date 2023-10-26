@@ -3,13 +3,14 @@ module github.com/Dharitri-org/sme-vm-common
 go 1.19
 
 require (
-	github.com/Dharitri-org/sme-core v0.0.2
-	github.com/Dharitri-org/sme-logger v0.0.3
+	github.com/Dharitri-org/sme-core v0.1.3
+	github.com/Dharitri-org/sme-logger v0.0.4
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/stretchr/testify v1.7.0
 )
 
 require (
+	github.com/btcsuite/btcd/btcutil v1.1.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect

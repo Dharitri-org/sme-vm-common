@@ -12,15 +12,17 @@ import (
 // Note: current implementation might also return unmodified storage entries.
 type StorageUpdate struct {
 	// Offset is the storage key.
-	// The VM treats this as a big.Int.
 	Offset []byte
 
 	// Data is the new storage value.
-	// The VM treats this as a big.Int.
 	// Zero indicates missing data for the key (or even a missing key),
 	// therefore a value of zero here indicates that
 	// the storage map entry with the given key can be deleted.
 	Data []byte
+
+	// Written represents that this storage was change and needs to be persisted
+	// into the chain
+	Written bool
 }
 
 // OutputAccount shows the state of an account after contract execution.
@@ -65,6 +67,12 @@ type OutputAccount struct {
 
 	// GasUsed will be populated if the contract was called in the same shard
 	GasUsed uint64
+
+	// BytesAddedToStorage for this output account
+	BytesAddedToStorage uint64
+
+	// BytesDeletedFromStorage for this output account
+	BytesDeletedFromStorage uint64
 }
 
 // OutputTransfer contains the fields needed to create transfers to another shard
@@ -220,3 +228,6 @@ func (o *OutputAccount) MergeStorageUpdates(outAcc *OutputAccount) {
 		o.StorageUpdates[key] = update
 	}
 }
+
+// MaxLengthForValueToOptTransfer defines the maximum length for value to optimize cross shard transfer
+const MaxLengthForValueToOptTransfer = 32

@@ -1,6 +1,7 @@
 package builtInFunctions
 
 import (
+	"fmt"
 	"math/big"
 	"sync"
 
@@ -9,12 +10,15 @@ import (
 	"github.com/Dharitri-org/sme-vm-common"
 )
 
+const maxLenForAddNFTQuantity = 32
+
 type dctNFTAddQuantity struct {
-	baseAlwaysActive
+	baseAlwaysActiveHandler
 	keyPrefix             []byte
-	marshalizer           vmcommon.Marshalizer
 	globalSettingsHandler vmcommon.DCTGlobalSettingsHandler
 	rolesHandler          vmcommon.DCTRoleHandler
+	dctStorageHandler     vmcommon.DCTNFTStorageHandler
+	enableEpochsHandler   vmcommon.EnableEpochsHandler
 	funcGasCost           uint64
 	mutExecution          sync.RWMutex
 }
@@ -22,12 +26,13 @@ type dctNFTAddQuantity struct {
 // NewDCTNFTAddQuantityFunc returns the dct NFT add quantity built-in function component
 func NewDCTNFTAddQuantityFunc(
 	funcGasCost uint64,
-	marshalizer vmcommon.Marshalizer,
+	dctStorageHandler vmcommon.DCTNFTStorageHandler,
 	globalSettingsHandler vmcommon.DCTGlobalSettingsHandler,
 	rolesHandler vmcommon.DCTRoleHandler,
+	enableEpochsHandler vmcommon.EnableEpochsHandler,
 ) (*dctNFTAddQuantity, error) {
-	if check.IfNil(marshalizer) {
-		return nil, ErrNilMarshalizer
+	if check.IfNil(dctStorageHandler) {
+		return nil, ErrNilDCTNFTStorageHandler
 	}
 	if check.IfNil(globalSettingsHandler) {
 		return nil, ErrNilGlobalSettingsHandler
@@ -35,14 +40,18 @@ func NewDCTNFTAddQuantityFunc(
 	if check.IfNil(rolesHandler) {
 		return nil, ErrNilRolesHandler
 	}
+	if check.IfNil(enableEpochsHandler) {
+		return nil, ErrNilEnableEpochsHandler
+	}
 
 	e := &dctNFTAddQuantity{
-		keyPrefix:             []byte(core.DharitriProtectedKeyPrefix + core.DCTKeyIdentifier),
-		marshalizer:           marshalizer,
+		keyPrefix:             []byte(baseDCTKeyPrefix),
 		globalSettingsHandler: globalSettingsHandler,
 		rolesHandler:          rolesHandler,
 		funcGasCost:           funcGasCost,
 		mutExecution:          sync.RWMutex{},
+		dctStorageHandler:     dctStorageHandler,
+		enableEpochsHandler:   enableEpochsHandler,
 	}
 
 	return e, nil
@@ -86,7 +95,7 @@ func (e *dctNFTAddQuantity) ProcessBuiltinFunction(
 
 	dctTokenKey := append(e.keyPrefix, vmInput.Arguments[0]...)
 	nonce := big.NewInt(0).SetBytes(vmInput.Arguments[1]).Uint64()
-	dctData, err := getDCTNFTTokenOnSender(acntSnd, dctTokenKey, nonce, e.marshalizer)
+	dctData, err := e.dctStorageHandler.GetDCTNFTTokenOnSender(acntSnd, dctTokenKey, nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -94,10 +103,19 @@ func (e *dctNFTAddQuantity) ProcessBuiltinFunction(
 		return nil, ErrNFTDoesNotHaveMetadata
 	}
 
+	isValueLengthCheckFlagEnabled := e.enableEpochsHandler.IsValueLengthCheckFlagEnabled()
+	if isValueLengthCheckFlagEnabled && len(vmInput.Arguments[2]) > maxLenForAddNFTQuantity {
+		return nil, fmt.Errorf("%w max length for add nft quantity is %d", ErrInvalidArguments, maxLenForAddNFTQuantity)
+	}
+
 	value := big.NewInt(0).SetBytes(vmInput.Arguments[2])
 	dctData.Value.Add(dctData.Value, value)
 
-	_, err = saveDCTNFTToken(acntSnd, dctTokenKey, dctData, e.marshalizer, e.globalSettingsHandler, vmInput.ReturnCallAfterError)
+	_, err = e.dctStorageHandler.SaveDCTNFTToken(acntSnd.AddressBytes(), acntSnd, dctTokenKey, nonce, dctData, false, vmInput.ReturnCallAfterError)
+	if err != nil {
+		return nil, err
+	}
+	err = e.dctStorageHandler.AddToLiquiditySystemAcc(dctTokenKey, nonce, value)
 	if err != nil {
 		return nil, err
 	}

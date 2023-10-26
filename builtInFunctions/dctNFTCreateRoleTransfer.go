@@ -12,20 +12,20 @@ import (
 )
 
 type dctNFTCreateRoleTransfer struct {
-	baseAlwaysActive
+	baseAlwaysActiveHandler
 	keyPrefix        []byte
-	marshalizer      vmcommon.Marshalizer
+	marshaller       vmcommon.Marshalizer
 	accounts         vmcommon.AccountsAdapter
 	shardCoordinator vmcommon.Coordinator
 }
 
 // NewDCTNFTCreateRoleTransfer returns the dct NFT create role transfer built-in function component
 func NewDCTNFTCreateRoleTransfer(
-	marshalizer vmcommon.Marshalizer,
+	marshaller vmcommon.Marshalizer,
 	accounts vmcommon.AccountsAdapter,
 	shardCoordinator vmcommon.Coordinator,
 ) (*dctNFTCreateRoleTransfer, error) {
-	if check.IfNil(marshalizer) {
+	if check.IfNil(marshaller) {
 		return nil, ErrNilMarshalizer
 	}
 	if check.IfNil(accounts) {
@@ -36,8 +36,8 @@ func NewDCTNFTCreateRoleTransfer(
 	}
 
 	e := &dctNFTCreateRoleTransfer{
-		keyPrefix:        []byte(core.DharitriProtectedKeyPrefix + core.DCTKeyIdentifier),
-		marshalizer:      marshalizer,
+		keyPrefix:        []byte(baseDCTKeyPrefix),
+		marshaller:       marshaller,
 		accounts:         accounts,
 		shardCoordinator: shardCoordinator,
 	}
@@ -68,14 +68,14 @@ func (e *dctNFTCreateRoleTransfer) ProcessBuiltinFunction(
 
 	vmOutput := &vmcommon.VMOutput{ReturnCode: vmcommon.Ok}
 	if bytes.Equal(vmInput.CallerAddr, core.DCTSCAddress) {
-		outAcc, errExec := e.executeTransferNFTCreateChangeAtCurrentOwner(acntDst, vmInput)
+		outAcc, errExec := e.executeTransferNFTCreateChangeAtCurrentOwner(vmOutput, acntDst, vmInput)
 		if errExec != nil {
 			return nil, errExec
 		}
 		vmOutput.OutputAccounts = make(map[string]*vmcommon.OutputAccount)
 		vmOutput.OutputAccounts[string(outAcc.Address)] = outAcc
 	} else {
-		err = e.executeTransferNFTCreateChangeAtNextOwner(acntDst, vmInput)
+		err = e.executeTransferNFTCreateChangeAtNextOwner(vmOutput, acntDst, vmInput)
 		if err != nil {
 			return nil, err
 		}
@@ -85,6 +85,7 @@ func (e *dctNFTCreateRoleTransfer) ProcessBuiltinFunction(
 }
 
 func (e *dctNFTCreateRoleTransfer) executeTransferNFTCreateChangeAtCurrentOwner(
+	vmOutput *vmcommon.VMOutput,
 	acntDst vmcommon.UserAccountHandler,
 	vmInput *vmcommon.ContractCallInput,
 ) (*vmcommon.OutputAccount, error) {
@@ -112,6 +113,9 @@ func (e *dctNFTCreateRoleTransfer) executeTransferNFTCreateChangeAtCurrentOwner(
 		return nil, err
 	}
 
+	logData := [][]byte{acntDst.AddressBytes(), boolToSlice(false)}
+	addDCTEntryInVMOutput(vmOutput, []byte(vmInput.Function), tokenID, 0, big.NewInt(0), logData...)
+
 	destAddress := vmInput.Arguments[1]
 	if e.shardCoordinator.ComputeId(destAddress) == e.shardCoordinator.SelfId() {
 		newDestinationAcc, errLoad := e.accounts.LoadAccount(destAddress)
@@ -137,6 +141,9 @@ func (e *dctNFTCreateRoleTransfer) executeTransferNFTCreateChangeAtCurrentOwner(
 		if err != nil {
 			return nil, err
 		}
+
+		logData = [][]byte{destAddress, boolToSlice(true)}
+		addDCTEntryInVMOutput(vmOutput, []byte(vmInput.Function), tokenID, 0, big.NewInt(0), logData...)
 	}
 
 	outAcc := &vmcommon.OutputAccount{
@@ -160,20 +167,20 @@ func (e *dctNFTCreateRoleTransfer) deleteCreateRoleFromAccount(
 	acntDst vmcommon.UserAccountHandler,
 	dctTokenRoleKey []byte,
 ) error {
-	roles, _, err := getDCTRolesForAcnt(e.marshalizer, acntDst, dctTokenRoleKey)
+	roles, _, err := getDCTRolesForAcnt(e.marshaller, acntDst, dctTokenRoleKey)
 	if err != nil {
 		return err
 	}
 
 	deleteRoles(roles, [][]byte{[]byte(core.DCTRoleNFTCreate)})
-	return saveRolesToAccount(acntDst, dctTokenRoleKey, roles, e.marshalizer)
+	return saveRolesToAccount(acntDst, dctTokenRoleKey, roles, e.marshaller)
 }
 
 func (e *dctNFTCreateRoleTransfer) addCreateRoleToAccount(
 	acntDst vmcommon.UserAccountHandler,
 	dctTokenRoleKey []byte,
 ) error {
-	roles, _, err := getDCTRolesForAcnt(e.marshalizer, acntDst, dctTokenRoleKey)
+	roles, _, err := getDCTRolesForAcnt(e.marshaller, acntDst, dctTokenRoleKey)
 	if err != nil {
 		return err
 	}
@@ -185,16 +192,16 @@ func (e *dctNFTCreateRoleTransfer) addCreateRoleToAccount(
 	}
 
 	roles.Roles = append(roles.Roles, []byte(core.DCTRoleNFTCreate))
-	return saveRolesToAccount(acntDst, dctTokenRoleKey, roles, e.marshalizer)
+	return saveRolesToAccount(acntDst, dctTokenRoleKey, roles, e.marshaller)
 }
 
 func saveRolesToAccount(
 	acntDst vmcommon.UserAccountHandler,
 	dctTokenRoleKey []byte,
 	roles *dct.DCTRoles,
-	marshalizer vmcommon.Marshalizer,
+	marshaller vmcommon.Marshalizer,
 ) error {
-	marshaledData, err := marshalizer.Marshal(roles)
+	marshaledData, err := marshaller.Marshal(roles)
 	if err != nil {
 		return err
 	}
@@ -207,6 +214,7 @@ func saveRolesToAccount(
 }
 
 func (e *dctNFTCreateRoleTransfer) executeTransferNFTCreateChangeAtNextOwner(
+	vmOutput *vmcommon.VMOutput,
 	acntDst vmcommon.UserAccountHandler,
 	vmInput *vmcommon.ContractCallInput,
 ) error {
@@ -227,6 +235,9 @@ func (e *dctNFTCreateRoleTransfer) executeTransferNFTCreateChangeAtNextOwner(
 	if err != nil {
 		return err
 	}
+
+	logData := [][]byte{acntDst.AddressBytes(), boolToSlice(true)}
+	addDCTEntryInVMOutput(vmOutput, []byte(vmInput.Function), tokenID, 0, big.NewInt(0), logData...)
 
 	return nil
 }
