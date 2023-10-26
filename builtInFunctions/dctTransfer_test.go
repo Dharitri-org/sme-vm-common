@@ -8,7 +8,7 @@ import (
 	"github.com/Dharitri-org/sme-core/core"
 	"github.com/Dharitri-org/sme-core/data/dct"
 	"github.com/Dharitri-org/sme-core/data/vm"
-	vmcommon "github.com/Dharitri-org/sme-vm-common"
+	"github.com/Dharitri-org/sme-vm-common"
 	"github.com/Dharitri-org/sme-vm-common/mock"
 	"github.com/stretchr/testify/assert"
 )
