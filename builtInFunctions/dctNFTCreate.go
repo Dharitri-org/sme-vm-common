@@ -9,7 +9,7 @@ import (
 	"github.com/Dharitri-org/sme-core/core"
 	"github.com/Dharitri-org/sme-core/core/check"
 	"github.com/Dharitri-org/sme-core/data/dct"
-	vmcommon "github.com/Dharitri-org/sme-vm-common"
+	"github.com/Dharitri-org/sme-vm-common"
 )
 
 var noncePrefix = []byte(core.DharitriProtectedKeyPrefix + core.DCTNFTLatestNonceIdentifier)

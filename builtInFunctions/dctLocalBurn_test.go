@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/Dharitri-org/sme-core/data/dct"
-	vmcommon "github.com/Dharitri-org/sme-vm-common"
+	"github.com/Dharitri-org/sme-vm-common"
 	"github.com/Dharitri-org/sme-vm-common/mock"
 	"github.com/stretchr/testify/require"
 )
