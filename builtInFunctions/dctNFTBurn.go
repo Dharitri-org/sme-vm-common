@@ -10,10 +10,10 @@ import (
 )
 
 type dctNFTBurn struct {
-	baseAlwaysActive
+	baseAlwaysActiveHandler
 	keyPrefix             []byte
-	marshalizer           vmcommon.Marshalizer
-	globalSettingsHandler vmcommon.DCTGlobalSettingsHandler
+	dctStorageHandler     vmcommon.DCTNFTStorageHandler
+	globalSettingsHandler vmcommon.ExtendedDCTGlobalSettingsHandler
 	rolesHandler          vmcommon.DCTRoleHandler
 	funcGasCost           uint64
 	mutExecution          sync.RWMutex
@@ -22,12 +22,12 @@ type dctNFTBurn struct {
 // NewDCTNFTBurnFunc returns the dct NFT burn built-in function component
 func NewDCTNFTBurnFunc(
 	funcGasCost uint64,
-	marshalizer vmcommon.Marshalizer,
-	globalSettingsHandler vmcommon.DCTGlobalSettingsHandler,
+	dctStorageHandler vmcommon.DCTNFTStorageHandler,
+	globalSettingsHandler vmcommon.ExtendedDCTGlobalSettingsHandler,
 	rolesHandler vmcommon.DCTRoleHandler,
 ) (*dctNFTBurn, error) {
-	if check.IfNil(marshalizer) {
-		return nil, ErrNilMarshalizer
+	if check.IfNil(dctStorageHandler) {
+		return nil, ErrNilDCTNFTStorageHandler
 	}
 	if check.IfNil(globalSettingsHandler) {
 		return nil, ErrNilGlobalSettingsHandler
@@ -37,8 +37,8 @@ func NewDCTNFTBurnFunc(
 	}
 
 	e := &dctNFTBurn{
-		keyPrefix:             []byte(core.DharitriProtectedKeyPrefix + core.DCTKeyIdentifier),
-		marshalizer:           marshalizer,
+		keyPrefix:             []byte(baseDCTKeyPrefix),
+		dctStorageHandler:     dctStorageHandler,
 		globalSettingsHandler: globalSettingsHandler,
 		rolesHandler:          rolesHandler,
 		funcGasCost:           funcGasCost,
@@ -79,14 +79,14 @@ func (e *dctNFTBurn) ProcessBuiltinFunction(
 		return nil, ErrInvalidArguments
 	}
 
-	err = e.rolesHandler.CheckAllowedToExecute(acntSnd, vmInput.Arguments[0], []byte(core.DCTRoleNFTBurn))
+	dctTokenKey := append(e.keyPrefix, vmInput.Arguments[0]...)
+	err = e.isAllowedToBurn(acntSnd, vmInput.Arguments[0])
 	if err != nil {
 		return nil, err
 	}
 
-	dctTokenKey := append(e.keyPrefix, vmInput.Arguments[0]...)
 	nonce := big.NewInt(0).SetBytes(vmInput.Arguments[1]).Uint64()
-	dctData, err := getDCTNFTTokenOnSender(acntSnd, dctTokenKey, nonce, e.marshalizer)
+	dctData, err := e.dctStorageHandler.GetDCTNFTTokenOnSender(acntSnd, dctTokenKey, nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,12 @@ func (e *dctNFTBurn) ProcessBuiltinFunction(
 
 	dctData.Value.Sub(dctData.Value, quantityToBurn)
 
-	_, err = saveDCTNFTToken(acntSnd, dctTokenKey, dctData, e.marshalizer, e.globalSettingsHandler, vmInput.ReturnCallAfterError)
+	_, err = e.dctStorageHandler.SaveDCTNFTToken(acntSnd.AddressBytes(), acntSnd, dctTokenKey, nonce, dctData, false, vmInput.ReturnCallAfterError)
+	if err != nil {
+		return nil, err
+	}
+
+	err = e.dctStorageHandler.AddToLiquiditySystemAcc(dctTokenKey, nonce, big.NewInt(0).Neg(quantityToBurn))
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +119,16 @@ func (e *dctNFTBurn) ProcessBuiltinFunction(
 	addDCTEntryInVMOutput(vmOutput, []byte(core.BuiltInFunctionDCTNFTBurn), vmInput.Arguments[0], nonce, quantityToBurn, vmInput.CallerAddr)
 
 	return vmOutput, nil
+}
+
+func (e *dctNFTBurn) isAllowedToBurn(acntSnd vmcommon.UserAccountHandler, tokenID []byte) error {
+	dctTokenKey := append(e.keyPrefix, tokenID...)
+	isBurnForAll := e.globalSettingsHandler.IsBurnForAll(dctTokenKey)
+	if isBurnForAll {
+		return nil
+	}
+
+	return e.rolesHandler.CheckAllowedToExecute(acntSnd, tokenID, []byte(core.DCTRoleNFTBurn))
 }
 
 // IsInterfaceNil returns true if underlying object in nil

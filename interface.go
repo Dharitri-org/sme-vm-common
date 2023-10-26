@@ -3,6 +3,8 @@ package vmcommon
 import (
 	"math/big"
 
+	"github.com/Dharitri-org/sme-core/core/closing"
+	"github.com/Dharitri-org/sme-core/data"
 	"github.com/Dharitri-org/sme-core/data/dct"
 )
 
@@ -19,7 +21,7 @@ type BlockchainHook interface {
 	// GetStorageData should yield the storage value for a certain account and index.
 	// Should return an empty byte array if the key is missing from the account storage,
 	// or if account does not exist.
-	GetStorageData(accountAddress []byte, index []byte) ([]byte, error)
+	GetStorageData(accountAddress []byte, index []byte) ([]byte, uint32, error)
 
 	// GetBlockhash returns the hash of the block with the asked nonce if available
 	GetBlockhash(nonce uint64) ([]byte, error)
@@ -79,7 +81,7 @@ type BlockchainHook interface {
 	IsSmartContract(address []byte) bool
 
 	// IsPayable checks weather the provided address can receive MOA or not
-	IsPayable(address []byte) (bool, error)
+	IsPayable(sndAddress []byte, recvAddress []byte) (bool, error)
 
 	// SaveCompiledCode saves to cache and storage the compiled code
 	SaveCompiledCode(codeHash []byte, code []byte)
@@ -93,6 +95,12 @@ type BlockchainHook interface {
 	// GetDCTToken loads the DCT digital token for the given key
 	GetDCTToken(address []byte, tokenID []byte, nonce uint64) (*dct.DCToken, error)
 
+	// IsPaused returns true if the tokenID is paused globally
+	IsPaused(tokenID []byte) bool
+
+	// IsLimitedTransfer return true if the tokenID has limited transfers
+	IsLimitedTransfer(tokenID []byte) bool
+
 	// GetSnapshot gets the number of entries in the journal as a snapshot id
 	GetSnapshot() int
 
@@ -105,6 +113,8 @@ type BlockchainHook interface {
 
 // VMExecutionHandler interface for any Dharitri VM endpoint
 type VMExecutionHandler interface {
+	closing.Closer
+
 	// RunSmartContractCreate computes how a smart contract creation should be performed
 	RunSmartContractCreate(input *ContractCreateInput) (*VMOutput, error)
 
@@ -161,7 +171,7 @@ type UserAccountHandler interface {
 
 // AccountDataHandler models what how to manipulate data held by a SC account
 type AccountDataHandler interface {
-	RetrieveValue(key []byte) ([]byte, error)
+	RetrieveValue(key []byte) ([]byte, uint32, error)
 	SaveKeyValue(key []byte, value []byte) error
 	IsInterfaceNil() bool
 }
@@ -184,8 +194,17 @@ type Marshalizer interface {
 
 // DCTGlobalSettingsHandler provides global settings functions for an DCT token
 type DCTGlobalSettingsHandler interface {
-	IsPaused(token []byte) bool
-	IsLimitedTransfer(tokenKey []byte) bool
+	IsPaused(dctTokenKey []byte) bool
+	IsLimitedTransfer(dctTokenKey []byte) bool
+	IsInterfaceNil() bool
+}
+
+// ExtendedDCTGlobalSettingsHandler provides global settings functions for an DCT token
+type ExtendedDCTGlobalSettingsHandler interface {
+	IsPaused(dctTokenKey []byte) bool
+	IsLimitedTransfer(dctTokenKey []byte) bool
+	IsBurnForAll(dctTokenKey []byte) bool
+	IsSenderOrDestinationWithTransferRole(sender, destination, tokenID []byte) bool
 	IsInterfaceNil() bool
 }
 
@@ -197,7 +216,7 @@ type DCTRoleHandler interface {
 
 // PayableHandler provides IsPayable function which returns if an account is payable or not
 type PayableHandler interface {
-	IsPayable(address []byte) (bool, error)
+	IsPayable(sndAddress, rcvAddress []byte) (bool, error)
 	IsInterfaceNil() bool
 }
 
@@ -221,11 +240,9 @@ type AccountsAdapter interface {
 	Commit() ([]byte, error)
 	JournalLen() int
 	RevertToSnapshot(snapshot int) error
-	GetNumCheckpoints() uint32
 	GetCode(codeHash []byte) []byte
 
 	RootHash() ([]byte, error)
-	RecreateTrie(rootHash []byte) error
 	IsInterfaceNil() bool
 }
 
@@ -248,12 +265,6 @@ type BuiltInFunctionContainer interface {
 	IsInterfaceNil() bool
 }
 
-// AcceptPayableHandler defines the methods to accept a payable handler through a set function
-type AcceptPayableHandler interface {
-	SetPayableHandler(payableHandler PayableHandler) error
-	IsInterfaceNil() bool
-}
-
 // EpochSubscriberHandler defines the behavior of a component that can be notified if a new epoch was confirmed
 type EpochSubscriberHandler interface {
 	EpochConfirmed(epoch uint32, timestamp uint64)
@@ -269,5 +280,101 @@ type EpochNotifier interface {
 // DCTTransferParser can parse single and multi DCT / NFT transfers
 type DCTTransferParser interface {
 	ParseDCTTransfers(sndAddr []byte, rcvAddr []byte, function string, args [][]byte) (*ParsedDCTTransfers, error)
+	IsInterfaceNil() bool
+}
+
+// DCTNFTStorageHandler will handle the storage for the nft metadata
+type DCTNFTStorageHandler interface {
+	SaveDCTNFTToken(senderAddress []byte, acnt UserAccountHandler, dctTokenKey []byte, nonce uint64, dctData *dct.DCToken, isCreation bool, isReturnWithError bool) ([]byte, error)
+	GetDCTNFTTokenOnSender(acnt UserAccountHandler, dctTokenKey []byte, nonce uint64) (*dct.DCToken, error)
+	GetDCTNFTTokenOnDestination(acnt UserAccountHandler, dctTokenKey []byte, nonce uint64) (*dct.DCToken, bool, error)
+	GetDCTNFTTokenOnDestinationWithCustomSystemAccount(accnt UserAccountHandler, dctTokenKey []byte, nonce uint64, systemAccount UserAccountHandler) (*dct.DCToken, bool, error)
+	WasAlreadySentToDestinationShardAndUpdateState(tickerID []byte, nonce uint64, dstAddress []byte) (bool, error)
+	SaveNFTMetaDataToSystemAccount(tx data.TransactionHandler) error
+	AddToLiquiditySystemAcc(dctTokenKey []byte, nonce uint64, transferValue *big.Int) error
+	IsInterfaceNil() bool
+}
+
+// SimpleDCTNFTStorageHandler will handle get of DCT data and save metadata to system acc
+type SimpleDCTNFTStorageHandler interface {
+	GetDCTNFTTokenOnDestination(accnt UserAccountHandler, dctTokenKey []byte, nonce uint64) (*dct.DCToken, bool, error)
+	SaveNFTMetaDataToSystemAccount(tx data.TransactionHandler) error
+	IsInterfaceNil() bool
+}
+
+// CallArgsParser will handle parsing transaction data to function and arguments
+type CallArgsParser interface {
+	ParseData(data string) (string, [][]byte, error)
+	ParseArguments(data string) ([][]byte, error)
+	IsInterfaceNil() bool
+}
+
+// BuiltInFunctionFactory will handle built-in functions and components
+type BuiltInFunctionFactory interface {
+	DCTGlobalSettingsHandler() DCTGlobalSettingsHandler
+	NFTStorageHandler() SimpleDCTNFTStorageHandler
+	BuiltInFunctionContainer() BuiltInFunctionContainer
+	SetPayableHandler(handler PayableHandler) error
+	CreateBuiltInFunctionContainer() error
+	IsInterfaceNil() bool
+}
+
+// PayableChecker will handle checking if transfer can happen of DCT tokens towards destination
+type PayableChecker interface {
+	CheckPayable(vmInput *ContractCallInput, dstAddress []byte, minLenArguments int) error
+	DetermineIsSCCallAfter(vmInput *ContractCallInput, destAddress []byte, minLenArguments int) bool
+	IsInterfaceNil() bool
+}
+
+// AcceptPayableChecker defines the methods to accept a payable handler through a set function
+type AcceptPayableChecker interface {
+	SetPayableChecker(payableHandler PayableChecker) error
+	IsInterfaceNil() bool
+}
+
+// EnableEpochsHandler is used to verify which flags are set in the current epoch based on EnableEpochs config
+type EnableEpochsHandler interface {
+	IsGlobalMintBurnFlagEnabled() bool
+	IsDCTTransferRoleFlagEnabled() bool
+	IsBuiltInFunctionsFlagEnabled() bool
+	IsCheckCorrectTokenIDForTransferRoleFlagEnabled() bool
+	IsMultiDCTTransferFixOnCallBackFlagEnabled() bool
+	IsFixOOGReturnCodeFlagEnabled() bool
+	IsRemoveNonUpdatedStorageFlagEnabled() bool
+	IsCreateNFTThroughExecByCallerFlagEnabled() bool
+	IsStorageAPICostOptimizationFlagEnabled() bool
+	IsFailExecutionOnEveryAPIErrorFlagEnabled() bool
+	IsManagedCryptoAPIsFlagEnabled() bool
+	IsSCDeployFlagEnabled() bool
+	IsAheadOfTimeGasUsageFlagEnabled() bool
+	IsRepairCallbackFlagEnabled() bool
+	IsDisableExecByCallerFlagEnabled() bool
+	IsRefactorContextFlagEnabled() bool
+	IsCheckFunctionArgumentFlagEnabled() bool
+	IsCheckExecuteOnReadOnlyFlagEnabled() bool
+	IsFixAsyncCallbackCheckFlagEnabled() bool
+	IsSaveToSystemAccountFlagEnabled() bool
+	IsCheckFrozenCollectionFlagEnabled() bool
+	IsSendAlwaysFlagEnabled() bool
+	IsValueLengthCheckFlagEnabled() bool
+	IsCheckTransferFlagEnabled() bool
+	IsTransferToMetaFlagEnabled() bool
+	IsDCTNFTImprovementV1FlagEnabled() bool
+	IsFixOldTokenLiquidityEnabled() bool
+	IsRuntimeMemStoreLimitEnabled() bool
+	IsMaxBlockchainHookCountersFlagEnabled() bool
+	IsWipeSingleNFTLiquidityDecreaseEnabled() bool
+
+	MultiDCTTransferAsyncCallBackEnableEpoch() uint32
+	FixOOGReturnCodeEnableEpoch() uint32
+	RemoveNonUpdatedStorageEnableEpoch() uint32
+	CreateNFTThroughExecByCallerEnableEpoch() uint32
+	FixFailExecutionOnErrorEnableEpoch() uint32
+	ManagedCryptoAPIEnableEpoch() uint32
+	DisableExecByCallerEnableEpoch() uint32
+	RefactorContextEnableEpoch() uint32
+	CheckExecuteReadOnlyEnableEpoch() uint32
+	StorageAPICostOptimizationEnableEpoch() uint32
+
 	IsInterfaceNil() bool
 }

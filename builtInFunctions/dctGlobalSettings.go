@@ -5,45 +5,49 @@ import (
 
 	"github.com/Dharitri-org/sme-core/core"
 	"github.com/Dharitri-org/sme-core/core/check"
-	"github.com/Dharitri-org/sme-vm-common"
-	"github.com/Dharitri-org/sme-vm-common/atomic"
+	"github.com/Dharitri-org/sme-core/marshal"
+	vmcommon "github.com/Dharitri-org/sme-vm-common"
 )
 
 type dctGlobalSettings struct {
-	*baseEnabled
-	keyPrefix []byte
-	set       bool
-	accounts  vmcommon.AccountsAdapter
+	baseActiveHandler
+	keyPrefix  []byte
+	set        bool
+	accounts   vmcommon.AccountsAdapter
+	marshaller marshal.Marshalizer
+	function   string
 }
 
 // NewDCTGlobalSettingsFunc returns the dct pause/un-pause built-in function component
 func NewDCTGlobalSettingsFunc(
 	accounts vmcommon.AccountsAdapter,
+	marshaller marshal.Marshalizer,
 	set bool,
 	function string,
-	activationEpoch uint32,
-	epochNotifier vmcommon.EpochNotifier,
+	activeHandler func() bool,
 ) (*dctGlobalSettings, error) {
 	if check.IfNil(accounts) {
 		return nil, ErrNilAccountsAdapter
+	}
+	if check.IfNil(marshaller) {
+		return nil, ErrNilMarshalizer
+	}
+	if activeHandler == nil {
+		return nil, ErrNilActiveHandler
 	}
 	if !isCorrectFunction(function) {
 		return nil, ErrInvalidArguments
 	}
 
 	e := &dctGlobalSettings{
-		keyPrefix: []byte(core.DharitriProtectedKeyPrefix + core.DCTKeyIdentifier),
-		set:       set,
-		accounts:  accounts,
+		keyPrefix:  []byte(baseDCTKeyPrefix),
+		set:        set,
+		accounts:   accounts,
+		marshaller: marshaller,
+		function:   function,
 	}
 
-	e.baseEnabled = &baseEnabled{
-		function:        function,
-		activationEpoch: activationEpoch,
-		flagActivated:   atomic.Flag{},
-	}
-
-	epochNotifier.RegisterNotifyHandler(e)
+	e.baseActiveHandler.activeHandler = activeHandler
 
 	return e, nil
 }
@@ -51,6 +55,8 @@ func NewDCTGlobalSettingsFunc(
 func isCorrectFunction(function string) bool {
 	switch function {
 	case core.BuiltInFunctionDCTPause, core.BuiltInFunctionDCTUnPause, core.BuiltInFunctionDCTSetLimitedTransfer, core.BuiltInFunctionDCTUnSetLimitedTransfer:
+		return true
+	case vmcommon.BuiltInFunctionDCTSetBurnRoleForAll, vmcommon.BuiltInFunctionDCTUnSetBurnRoleForAll:
 		return true
 	default:
 		return false
@@ -93,13 +99,13 @@ func (e *dctGlobalSettings) ProcessBuiltinFunction(
 	return vmOutput, nil
 }
 
-func (e *dctGlobalSettings) toggleSetting(token []byte) error {
+func (e *dctGlobalSettings) toggleSetting(dctTokenKey []byte) error {
 	systemSCAccount, err := e.getSystemAccount()
 	if err != nil {
 		return err
 	}
 
-	dctMetaData, err := e.getGlobalMetadata(token)
+	dctMetaData, err := e.getGlobalMetadata(dctTokenKey)
 	if err != nil {
 		return err
 	}
@@ -111,9 +117,12 @@ func (e *dctGlobalSettings) toggleSetting(token []byte) error {
 	case core.BuiltInFunctionDCTPause, core.BuiltInFunctionDCTUnPause:
 		dctMetaData.Paused = e.set
 		break
+	case vmcommon.BuiltInFunctionDCTUnSetBurnRoleForAll, vmcommon.BuiltInFunctionDCTSetBurnRoleForAll:
+		dctMetaData.BurnRoleForAll = e.set
+		break
 	}
 
-	err = systemSCAccount.AccountDataHandler().SaveKeyValue(token, dctMetaData.ToBytes())
+	err = systemSCAccount.AccountDataHandler().SaveKeyValue(dctTokenKey, dctMetaData.ToBytes())
 	if err != nil {
 		return err
 	}
@@ -135,9 +144,9 @@ func (e *dctGlobalSettings) getSystemAccount() (vmcommon.UserAccountHandler, err
 	return userAcc, nil
 }
 
-// IsPaused returns true if the token is paused
-func (e *dctGlobalSettings) IsPaused(tokenKey []byte) bool {
-	dctMetadata, err := e.getGlobalMetadata(tokenKey)
+// IsPaused returns true if the dctTokenKey (prefixed) is paused
+func (e *dctGlobalSettings) IsPaused(dctTokenKey []byte) bool {
+	dctMetadata, err := e.getGlobalMetadata(dctTokenKey)
 	if err != nil {
 		return false
 	}
@@ -145,9 +154,9 @@ func (e *dctGlobalSettings) IsPaused(tokenKey []byte) bool {
 	return dctMetadata.Paused
 }
 
-// IsLimitedTransfer returns true if the token is with limited transfer
-func (e *dctGlobalSettings) IsLimitedTransfer(tokenKey []byte) bool {
-	dctMetadata, err := e.getGlobalMetadata(tokenKey)
+// IsLimitedTransfer returns true if the dctTokenKey (prefixed) is with limited transfer
+func (e *dctGlobalSettings) IsLimitedTransfer(dctTokenKey []byte) bool {
+	dctMetadata, err := e.getGlobalMetadata(dctTokenKey)
 	if err != nil {
 		return false
 	}
@@ -155,13 +164,49 @@ func (e *dctGlobalSettings) IsLimitedTransfer(tokenKey []byte) bool {
 	return dctMetadata.LimitedTransfer
 }
 
-func (e *dctGlobalSettings) getGlobalMetadata(tokenKey []byte) (*DCTGlobalMetadata, error) {
+// IsBurnForAll returns true if the dctTokenKey (prefixed) is with burn for all
+func (e *dctGlobalSettings) IsBurnForAll(dctTokenKey []byte) bool {
+	dctMetadata, err := e.getGlobalMetadata(dctTokenKey)
+	if err != nil {
+		return false
+	}
+
+	return dctMetadata.BurnRoleForAll
+}
+
+// IsSenderOrDestinationWithTransferRole returns true if we have transfer role on the system account
+func (e *dctGlobalSettings) IsSenderOrDestinationWithTransferRole(sender, destination, tokenID []byte) bool {
+	if !e.activeHandler() {
+		return false
+	}
+
+	systemAcc, err := e.getSystemAccount()
+	if err != nil {
+		return false
+	}
+
+	dctTokenTransferRoleKey := append(transferAddressesKeyPrefix, tokenID...)
+	addresses, _, err := getDCTRolesForAcnt(e.marshaller, systemAcc, dctTokenTransferRoleKey)
+	if err != nil {
+		return false
+	}
+
+	for _, address := range addresses.Roles {
+		if bytes.Equal(address, sender) || bytes.Equal(address, destination) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (e *dctGlobalSettings) getGlobalMetadata(dctTokenKey []byte) (*DCTGlobalMetadata, error) {
 	systemSCAccount, err := e.getSystemAccount()
 	if err != nil {
 		return nil, err
 	}
 
-	val, _ := systemSCAccount.AccountDataHandler().RetrieveValue(tokenKey)
+	val, _, _ := systemSCAccount.AccountDataHandler().RetrieveValue(dctTokenKey)
 	dctMetaData := DCTGlobalMetadataFromBytes(val)
 	return &dctMetaData, nil
 }

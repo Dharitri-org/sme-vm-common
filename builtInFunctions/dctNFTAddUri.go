@@ -7,13 +7,12 @@ import (
 	"github.com/Dharitri-org/sme-core/core"
 	"github.com/Dharitri-org/sme-core/core/check"
 	"github.com/Dharitri-org/sme-vm-common"
-	"github.com/Dharitri-org/sme-vm-common/atomic"
 )
 
 type dctNFTAddUri struct {
-	*baseEnabled
+	baseActiveHandler
 	keyPrefix             []byte
-	marshalizer           vmcommon.Marshalizer
+	dctStorageHandler     vmcommon.DCTNFTStorageHandler
 	globalSettingsHandler vmcommon.DCTGlobalSettingsHandler
 	rolesHandler          vmcommon.DCTRoleHandler
 	gasConfig             vmcommon.BaseOperationCost
@@ -25,14 +24,13 @@ type dctNFTAddUri struct {
 func NewDCTNFTAddUriFunc(
 	funcGasCost uint64,
 	gasConfig vmcommon.BaseOperationCost,
-	marshalizer vmcommon.Marshalizer,
+	dctStorageHandler vmcommon.DCTNFTStorageHandler,
 	globalSettingsHandler vmcommon.DCTGlobalSettingsHandler,
 	rolesHandler vmcommon.DCTRoleHandler,
-	activationEpoch uint32,
-	epochNotifier vmcommon.EpochNotifier,
+	enableEpochsHandler vmcommon.EnableEpochsHandler,
 ) (*dctNFTAddUri, error) {
-	if check.IfNil(marshalizer) {
-		return nil, ErrNilMarshalizer
+	if check.IfNil(dctStorageHandler) {
+		return nil, ErrNilDCTNFTStorageHandler
 	}
 	if check.IfNil(globalSettingsHandler) {
 		return nil, ErrNilGlobalSettingsHandler
@@ -40,13 +38,13 @@ func NewDCTNFTAddUriFunc(
 	if check.IfNil(rolesHandler) {
 		return nil, ErrNilRolesHandler
 	}
-	if check.IfNil(epochNotifier) {
-		return nil, ErrNilEpochHandler
+	if check.IfNil(enableEpochsHandler) {
+		return nil, ErrNilEnableEpochsHandler
 	}
 
 	e := &dctNFTAddUri{
-		keyPrefix:             []byte(core.DharitriProtectedKeyPrefix + core.DCTKeyIdentifier),
-		marshalizer:           marshalizer,
+		keyPrefix:             []byte(baseDCTKeyPrefix),
+		dctStorageHandler:     dctStorageHandler,
 		funcGasCost:           funcGasCost,
 		mutExecution:          sync.RWMutex{},
 		globalSettingsHandler: globalSettingsHandler,
@@ -54,13 +52,7 @@ func NewDCTNFTAddUriFunc(
 		rolesHandler:          rolesHandler,
 	}
 
-	e.baseEnabled = &baseEnabled{
-		function:        core.BuiltInFunctionDCTNFTAddURI,
-		activationEpoch: activationEpoch,
-		flagActivated:   atomic.Flag{},
-	}
-
-	epochNotifier.RegisterNotifyHandler(e)
+	e.baseActiveHandler.activeHandler = enableEpochsHandler.IsDCTNFTImprovementV1FlagEnabled
 
 	return e, nil
 }
@@ -77,11 +69,11 @@ func (e *dctNFTAddUri) SetNewGasConfig(gasCost *vmcommon.GasCost) {
 	e.mutExecution.Unlock()
 }
 
-// ProcessBuiltinFunction resolves DCT NFT add quantity function call
+// ProcessBuiltinFunction resolves DCT NFT add uris function call
 // Requires 3 arguments:
 // arg0 - token identifier
 // arg1 - nonce
-// arg2 - attributes to add
+// arg[2:] - uris to add
 func (e *dctNFTAddUri) ProcessBuiltinFunction(
 	acntSnd, _ vmcommon.UserAccountHandler,
 	vmInput *vmcommon.ContractCallInput,
@@ -112,14 +104,14 @@ func (e *dctNFTAddUri) ProcessBuiltinFunction(
 	if nonce == 0 {
 		return nil, ErrNFTDoesNotHaveMetadata
 	}
-	dctData, err := getDCTNFTTokenOnSender(acntSnd, dctTokenKey, nonce, e.marshalizer)
+	dctData, err := e.dctStorageHandler.GetDCTNFTTokenOnSender(acntSnd, dctTokenKey, nonce)
 	if err != nil {
 		return nil, err
 	}
 
 	dctData.TokenMetaData.URIs = append(dctData.TokenMetaData.URIs, vmInput.Arguments[2:]...)
 
-	_, err = saveDCTNFTToken(acntSnd, dctTokenKey, dctData, e.marshalizer, e.globalSettingsHandler, vmInput.ReturnCallAfterError)
+	_, err = e.dctStorageHandler.SaveDCTNFTToken(acntSnd.AddressBytes(), acntSnd, dctTokenKey, nonce, dctData, true, vmInput.ReturnCallAfterError)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +121,8 @@ func (e *dctNFTAddUri) ProcessBuiltinFunction(
 		GasRemaining: vmInput.GasProvided - e.funcGasCost - gasCostForStore,
 	}
 
-	addDCTEntryInVMOutput(vmOutput, []byte(core.BuiltInFunctionDCTNFTAddURI), vmInput.Arguments[0], nonce, big.NewInt(0), vmInput.CallerAddr)
+	extraTopics := append([][]byte{vmInput.CallerAddr}, vmInput.Arguments[2:]...)
+	addDCTEntryInVMOutput(vmOutput, []byte(core.BuiltInFunctionDCTNFTAddURI), vmInput.Arguments[0], nonce, big.NewInt(0), extraTopics...)
 
 	return vmOutput, nil
 }

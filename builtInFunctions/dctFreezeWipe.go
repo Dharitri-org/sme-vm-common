@@ -10,28 +10,40 @@ import (
 )
 
 type dctFreezeWipe struct {
-	baseAlwaysActive
-	marshalizer vmcommon.Marshalizer
-	keyPrefix   []byte
-	wipe        bool
-	freeze      bool
+	baseAlwaysActiveHandler
+	dctStorageHandler   vmcommon.DCTNFTStorageHandler
+	enableEpochsHandler vmcommon.EnableEpochsHandler
+	marshaller          vmcommon.Marshalizer
+	keyPrefix           []byte
+	wipe                bool
+	freeze              bool
 }
 
 // NewDCTFreezeWipeFunc returns the dct freeze/un-freeze/wipe built-in function component
 func NewDCTFreezeWipeFunc(
-	marshalizer vmcommon.Marshalizer,
+	dctStorageHandler vmcommon.DCTNFTStorageHandler,
+	enableEpochsHandler vmcommon.EnableEpochsHandler,
+	marshaller vmcommon.Marshalizer,
 	freeze bool,
 	wipe bool,
 ) (*dctFreezeWipe, error) {
-	if check.IfNil(marshalizer) {
+	if check.IfNil(marshaller) {
 		return nil, ErrNilMarshalizer
+	}
+	if check.IfNil(dctStorageHandler) {
+		return nil, ErrNilDCTNFTStorageHandler
+	}
+	if check.IfNil(enableEpochsHandler) {
+		return nil, ErrNilEnableEpochsHandler
 	}
 
 	e := &dctFreezeWipe{
-		marshalizer: marshalizer,
-		keyPrefix:   []byte(core.DharitriProtectedKeyPrefix + core.DCTKeyIdentifier),
-		freeze:      freeze,
-		wipe:        wipe,
+		dctStorageHandler:   dctStorageHandler,
+		enableEpochsHandler: enableEpochsHandler,
+		marshaller:          marshaller,
+		keyPrefix:           []byte(baseDCTKeyPrefix),
+		freeze:              freeze,
+		wipe:                wipe,
 	}
 
 	return e, nil
@@ -63,57 +75,81 @@ func (e *dctFreezeWipe) ProcessBuiltinFunction(
 	}
 
 	dctTokenKey := append(e.keyPrefix, vmInput.Arguments[0]...)
+	identifier, nonce := extractTokenIdentifierAndNonceDCTWipe(vmInput.Arguments[0])
+
+	var amount *big.Int
+	var err error
 
 	if e.wipe {
-		err := e.wipeIfApplicable(acntDst, dctTokenKey)
+		amount, err = e.wipeIfApplicable(acntDst, dctTokenKey, identifier, nonce)
 		if err != nil {
 			return nil, err
 		}
+
 	} else {
-		err := e.toggleFreeze(acntDst, dctTokenKey)
+		amount, err = e.toggleFreeze(acntDst, dctTokenKey)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	vmOutput := &vmcommon.VMOutput{ReturnCode: vmcommon.Ok}
-	if e.wipe {
-		addDCTEntryInVMOutput(vmOutput, []byte(core.BuiltInFunctionDCTWipe), vmInput.Arguments[0], 0, big.NewInt(0), vmInput.CallerAddr, acntDst.AddressBytes())
-	}
+	addDCTEntryInVMOutput(vmOutput, []byte(vmInput.Function), identifier, nonce, amount, vmInput.CallerAddr, acntDst.AddressBytes())
 
 	return vmOutput, nil
 }
 
-func (e *dctFreezeWipe) wipeIfApplicable(acntDst vmcommon.UserAccountHandler, tokenKey []byte) error {
-	tokenData, err := getDCTDataFromKey(acntDst, tokenKey, e.marshalizer)
+func (e *dctFreezeWipe) wipeIfApplicable(acntDst vmcommon.UserAccountHandler, tokenKey []byte, identifier []byte, nonce uint64) (*big.Int, error) {
+	tokenData, err := getDCTDataFromKey(acntDst, tokenKey, e.marshaller)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	dctUserMetadata := DCTUserMetadataFromBytes(tokenData.Properties)
 	if !dctUserMetadata.Frozen {
-		return ErrCannotWipeAccountNotFrozen
+		return nil, ErrCannotWipeAccountNotFrozen
 	}
 
-	return acntDst.AccountDataHandler().SaveKeyValue(tokenKey, nil)
+	err = acntDst.AccountDataHandler().SaveKeyValue(tokenKey, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	err = e.removeLiquidity(identifier, nonce, tokenData.Value)
+	if err != nil {
+		return nil, err
+	}
+
+	wipedAmount := vmcommon.ZeroValueIfNil(tokenData.Value)
+	return wipedAmount, nil
 }
 
-func (e *dctFreezeWipe) toggleFreeze(acntDst vmcommon.UserAccountHandler, tokenKey []byte) error {
-	tokenData, err := getDCTDataFromKey(acntDst, tokenKey, e.marshalizer)
+func (e *dctFreezeWipe) removeLiquidity(tokenIdentifier []byte, nonce uint64, value *big.Int) error {
+	if !e.enableEpochsHandler.IsWipeSingleNFTLiquidityDecreaseEnabled() {
+		return nil
+	}
+
+	tokenIDKey := append(e.keyPrefix, tokenIdentifier...)
+	return e.dctStorageHandler.AddToLiquiditySystemAcc(tokenIDKey, nonce, big.NewInt(0).Neg(value))
+}
+
+func (e *dctFreezeWipe) toggleFreeze(acntDst vmcommon.UserAccountHandler, tokenKey []byte) (*big.Int, error) {
+	tokenData, err := getDCTDataFromKey(acntDst, tokenKey, e.marshaller)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	dctUserMetadata := DCTUserMetadataFromBytes(tokenData.Properties)
 	dctUserMetadata.Frozen = e.freeze
 	tokenData.Properties = dctUserMetadata.ToBytes()
 
-	err = saveDCTData(acntDst, tokenData, tokenKey, e.marshalizer)
+	err = saveDCTData(acntDst, tokenData, tokenKey, e.marshaller)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	frozenAmount := vmcommon.ZeroValueIfNil(tokenData.Value)
+	return frozenAmount, nil
 }
 
 // IsInterfaceNil returns true if underlying object in nil
