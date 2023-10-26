@@ -2,6 +2,8 @@ package vmcommon
 
 import (
 	"bytes"
+
+	"github.com/Dharitri-org/sme-core/core"
 )
 
 // SystemAccountAddress is the hard-coded address in which we save global settings on all shards
@@ -88,11 +90,11 @@ func IsSmartContractOnMetachain(identifier []byte, rcvAddress []byte) bool {
 
 // IsAllowedToSaveUnderKey returns if saving key-value in data tries under given key is allowed
 func IsAllowedToSaveUnderKey(key []byte) bool {
-	prefixLen := len(DharitriProtectedKeyPrefix)
+	prefixLen := len(core.DharitriProtectedKeyPrefix)
 	if len(key) < prefixLen {
 		return true
 	}
 
 	trimmedKey := key[:prefixLen]
-	return !bytes.Equal(trimmedKey, []byte(DharitriProtectedKeyPrefix))
+	return !bytes.Equal(trimmedKey, []byte(core.DharitriProtectedKeyPrefix))
 }

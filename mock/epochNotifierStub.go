@@ -1,8 +1,8 @@
 package mock
 
 import (
+	"github.com/Dharitri-org/sme-core/core/check"
 	vmcommon "github.com/Dharitri-org/sme-vm-common"
-	"github.com/Dharitri-org/sme-vm-common/check"
 )
 
 // EpochNotifierStub -

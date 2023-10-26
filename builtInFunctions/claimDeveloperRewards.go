@@ -5,8 +5,9 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/Dharitri-org/sme-core/core/check"
+	"github.com/Dharitri-org/sme-core/data/vm"
 	vmcommon "github.com/Dharitri-org/sme-vm-common"
-	"github.com/Dharitri-org/sme-vm-common/check"
 )
 
 type claimDeveloperRewards struct {
@@ -68,13 +69,13 @@ func (c *claimDeveloperRewards) ProcessBuiltinFunction(
 		Value:         big.NewInt(0).Set(value),
 		GasLimit:      0,
 		Data:          nil,
-		CallType:      vmcommon.DirectCall,
+		CallType:      vm.DirectCall,
 		SenderAddress: vmInput.CallerAddr,
 	}
-	if vmInput.CallType == vmcommon.AsynchronousCall {
+	if vmInput.CallType == vm.AsynchronousCall {
 		outTransfer.GasLocked = vmInput.GasLocked
 		outTransfer.GasLimit = vmOutput.GasRemaining
-		outTransfer.CallType = vmcommon.AsynchronousCallBack
+		outTransfer.CallType = vm.AsynchronousCallBack
 		vmOutput.GasRemaining = 0
 	}
 	outputAcc := &vmcommon.OutputAccount{

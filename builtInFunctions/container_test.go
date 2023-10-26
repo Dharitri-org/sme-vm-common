@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Dharitri-org/sme-vm-common/check"
+	"github.com/Dharitri-org/sme-core/core/check"
 	"github.com/Dharitri-org/sme-vm-common/mock"
 	"github.com/stretchr/testify/assert"
 )
