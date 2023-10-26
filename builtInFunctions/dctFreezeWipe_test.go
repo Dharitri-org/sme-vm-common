@@ -4,8 +4,9 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/Dharitri-org/sme-core/core"
+	"github.com/Dharitri-org/sme-core/data/dct"
 	vmcommon "github.com/Dharitri-org/sme-vm-common"
-	"github.com/Dharitri-org/sme-vm-common/data/dct"
 	"github.com/Dharitri-org/sme-vm-common/mock"
 	"github.com/stretchr/testify/assert"
 )
@@ -46,7 +47,7 @@ func TestDCTFreezeWipe_ProcessBuiltInFunctionErrors(t *testing.T) {
 	_, err = freeze.ProcessBuiltinFunction(nil, nil, input)
 	assert.Equal(t, err, ErrAddressIsNotDCTSystemSC)
 
-	input.CallerAddr = vmcommon.DCTSCAddress
+	input.CallerAddr = core.DCTSCAddress
 	_, err = freeze.ProcessBuiltinFunction(nil, nil, input)
 	assert.Equal(t, err, ErrNilUserAccount)
 
@@ -80,7 +81,7 @@ func TestDCTFreezeWipe_ProcessBuiltInFunction(t *testing.T) {
 	key := []byte("key")
 
 	input.Arguments = [][]byte{key}
-	input.CallerAddr = vmcommon.DCTSCAddress
+	input.CallerAddr = core.DCTSCAddress
 	input.RecipientAddr = []byte("dst")
 	dctKey := append(freeze.keyPrefix, key...)
 	dctToken := &dct.DCToken{Value: big.NewInt(10)}
