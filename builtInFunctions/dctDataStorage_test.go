@@ -320,6 +320,152 @@ func TestDctDataStorage_SaveDCTNFTTokenNoChangeInSystemAcc(t *testing.T) {
 	assert.Equal(t, dctData, dctDataGet)
 }
 
+func TestDctDataStorage_SaveDCTNFTTokenAlwaysSaveTokenMetaDataEnabled(t *testing.T) {
+	t.Parallel()
+
+	args := createMockArgsForNewDCTDataStorage()
+	args.EnableEpochsHandler = &mock.EnableEpochsHandlerStub{
+		IsSaveToSystemAccountFlagEnabledField: true,
+		IsSendAlwaysFlagEnabledField:          true,
+		IsAlwaysSaveTokenMetaDataEnabledField: true,
+	}
+	dataStorage, _ := NewDCTDataStorage(args)
+
+	userAcc := mock.NewAccountWrapMock([]byte("addr"))
+	nonce := uint64(10)
+
+	t.Run("new token should not rewrite metadata", func(t *testing.T) {
+		newToken := &dct.DCToken{
+			Value: big.NewInt(10),
+		}
+		tokenIdentifier := "newTkn"
+		key := baseDCTKeyPrefix + tokenIdentifier
+		tokenKey := append([]byte(key), big.NewInt(int64(nonce)).Bytes()...)
+
+		_ = saveDCTData(userAcc, newToken, tokenKey, args.Marshalizer)
+
+		systemAcc, _ := dataStorage.getSystemAccount(defaultQueryOptions())
+		metaData := &dct.MetaData{
+			Name: []byte("test"),
+		}
+		dctDataOnSystemAcc := &dct.DCToken{
+			TokenMetaData: metaData,
+			Reserved:      []byte{1},
+		}
+		dctMetaDataBytes, _ := args.Marshalizer.Marshal(dctDataOnSystemAcc)
+		_ = systemAcc.AccountDataHandler().SaveKeyValue(tokenKey, dctMetaDataBytes)
+
+		newMetaData := &dct.MetaData{Name: []byte("newName")}
+		transferDCTData := &dct.DCToken{Value: big.NewInt(100), TokenMetaData: newMetaData}
+		_, err := dataStorage.SaveDCTNFTToken([]byte("address"), userAcc, []byte(key), nonce, transferDCTData, false, false)
+		assert.Nil(t, err)
+
+		dctDataGet, _, err := dataStorage.GetDCTNFTTokenOnDestination(userAcc, []byte(key), nonce)
+		assert.Nil(t, err)
+
+		expectedDCTData := &dct.DCToken{
+			Value:         big.NewInt(100),
+			TokenMetaData: metaData,
+		}
+		assert.Equal(t, expectedDCTData, dctDataGet)
+	})
+	t.Run("old token should rewrite metadata", func(t *testing.T) {
+		newToken := &dct.DCToken{
+			Value: big.NewInt(10),
+		}
+		tokenIdentifier := "newTkn"
+		key := baseDCTKeyPrefix + tokenIdentifier
+		tokenKey := append([]byte(key), big.NewInt(int64(nonce)).Bytes()...)
+
+		_ = saveDCTData(userAcc, newToken, tokenKey, args.Marshalizer)
+
+		systemAcc, _ := dataStorage.getSystemAccount(defaultQueryOptions())
+		metaData := &dct.MetaData{
+			Name: []byte("test"),
+		}
+		dctDataOnSystemAcc := &dct.DCToken{
+			TokenMetaData: metaData,
+		}
+		dctMetaDataBytes, _ := args.Marshalizer.Marshal(dctDataOnSystemAcc)
+		_ = systemAcc.AccountDataHandler().SaveKeyValue(tokenKey, dctMetaDataBytes)
+
+		newMetaData := &dct.MetaData{Name: []byte("newName")}
+		transferDCTData := &dct.DCToken{Value: big.NewInt(100), TokenMetaData: newMetaData}
+		dctDataGet := setAndGetStoredToken(t, dataStorage, userAcc, []byte(key), nonce, transferDCTData)
+
+		expectedDCTData := &dct.DCToken{
+			Value:         big.NewInt(100),
+			TokenMetaData: newMetaData,
+		}
+		assert.Equal(t, expectedDCTData, dctDataGet)
+	})
+	t.Run("old token should not rewrite metadata if the flags are not set", func(t *testing.T) {
+		localArgs := createMockArgsForNewDCTDataStorage()
+		localEpochsHandler := &mock.EnableEpochsHandlerStub{
+			IsSaveToSystemAccountFlagEnabledField: true,
+			IsSendAlwaysFlagEnabledField:          true,
+			IsAlwaysSaveTokenMetaDataEnabledField: true,
+		}
+		localArgs.EnableEpochsHandler = localEpochsHandler
+		localDataStorage, _ := NewDCTDataStorage(localArgs)
+
+		newToken := &dct.DCToken{
+			Value: big.NewInt(10),
+		}
+		tokenIdentifier := "newTkn"
+		key := baseDCTKeyPrefix + tokenIdentifier
+		tokenKey := append([]byte(key), big.NewInt(int64(nonce)).Bytes()...)
+
+		_ = saveDCTData(userAcc, newToken, tokenKey, localArgs.Marshalizer)
+
+		systemAcc, _ := localDataStorage.getSystemAccount(defaultQueryOptions())
+		metaData := &dct.MetaData{
+			Name: []byte("test"),
+		}
+		dctDataOnSystemAcc := &dct.DCToken{
+			TokenMetaData: metaData,
+		}
+		dctMetaDataBytes, _ := localArgs.Marshalizer.Marshal(dctDataOnSystemAcc)
+		_ = systemAcc.AccountDataHandler().SaveKeyValue(tokenKey, dctMetaDataBytes)
+
+		newMetaData := &dct.MetaData{Name: []byte("newName")}
+		transferDCTData := &dct.DCToken{Value: big.NewInt(100), TokenMetaData: newMetaData}
+		expectedDCTData := &dct.DCToken{
+			Value:         big.NewInt(100),
+			TokenMetaData: metaData,
+		}
+
+		localEpochsHandler.IsAlwaysSaveTokenMetaDataEnabledField = false
+		localEpochsHandler.IsSendAlwaysFlagEnabledField = true
+
+		dctDataGet := setAndGetStoredToken(t, localDataStorage, userAcc, []byte(key), nonce, transferDCTData)
+		assert.Equal(t, expectedDCTData, dctDataGet)
+
+		localEpochsHandler.IsAlwaysSaveTokenMetaDataEnabledField = true
+		localEpochsHandler.IsSendAlwaysFlagEnabledField = false
+
+		dctDataGet = setAndGetStoredToken(t, localDataStorage, userAcc, []byte(key), nonce, transferDCTData)
+		assert.Equal(t, expectedDCTData, dctDataGet)
+	})
+}
+
+func setAndGetStoredToken(
+	tb testing.TB,
+	dctDataStorage *dctDataStorage,
+	userAcc vmcommon.UserAccountHandler,
+	key []byte,
+	nonce uint64,
+	transferDCTData *dct.DCToken,
+) *dct.DCToken {
+	_, err := dctDataStorage.SaveDCTNFTToken([]byte("address"), userAcc, key, nonce, transferDCTData, false, false)
+	assert.Nil(tb, err)
+
+	dctDataGet, _, err := dctDataStorage.GetDCTNFTTokenOnDestination(userAcc, key, nonce)
+	assert.Nil(tb, err)
+
+	return dctDataGet
+}
+
 func TestDctDataStorage_SaveDCTNFTTokenWhenQuantityZero(t *testing.T) {
 	t.Parallel()
 

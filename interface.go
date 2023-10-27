@@ -285,7 +285,7 @@ type DCTTransferParser interface {
 
 // DCTNFTStorageHandler will handle the storage for the nft metadata
 type DCTNFTStorageHandler interface {
-	SaveDCTNFTToken(senderAddress []byte, acnt UserAccountHandler, dctTokenKey []byte, nonce uint64, dctData *dct.DCToken, isCreation bool, isReturnWithError bool) ([]byte, error)
+	SaveDCTNFTToken(senderAddress []byte, acnt UserAccountHandler, dctTokenKey []byte, nonce uint64, dctData *dct.DCToken, mustUpdateAllFields bool, isReturnWithError bool) ([]byte, error)
 	GetDCTNFTTokenOnSender(acnt UserAccountHandler, dctTokenKey []byte, nonce uint64) (*dct.DCToken, error)
 	GetDCTNFTTokenOnDestination(acnt UserAccountHandler, dctTokenKey []byte, nonce uint64) (*dct.DCToken, bool, error)
 	GetDCTNFTTokenOnDestinationWithCustomSystemAccount(accnt UserAccountHandler, dctTokenKey []byte, nonce uint64, systemAccount UserAccountHandler) (*dct.DCToken, bool, error)
@@ -364,6 +364,7 @@ type EnableEpochsHandler interface {
 	IsRuntimeMemStoreLimitEnabled() bool
 	IsMaxBlockchainHookCountersFlagEnabled() bool
 	IsWipeSingleNFTLiquidityDecreaseEnabled() bool
+	IsAlwaysSaveTokenMetaDataEnabled() bool
 
 	MultiDCTTransferAsyncCallBackEnableEpoch() uint32
 	FixOOGReturnCodeEnableEpoch() uint32
