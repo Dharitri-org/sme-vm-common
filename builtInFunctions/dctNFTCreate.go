@@ -11,7 +11,7 @@ import (
 	"github.com/Dharitri-org/sme-core/data/dct"
 	"github.com/Dharitri-org/sme-core/data/vm"
 	logger "github.com/Dharitri-org/sme-logger"
-	"github.com/Dharitri-org/sme-vm-common"
+	vmcommon "github.com/Dharitri-org/sme-vm-common"
 )
 
 var (
