@@ -10,7 +10,7 @@ import (
 
 // DCTNFTStorageHandlerStub -
 type DCTNFTStorageHandlerStub struct {
-	SaveDCTNFTTokenCalled                                    func(senderAddress []byte, acnt vmcommon.UserAccountHandler, dctTokenKey []byte, nonce uint64, dctData *dct.DCToken, isCreation bool, isReturnWithError bool) ([]byte, error)
+	SaveDCTNFTTokenCalled                                    func(senderAddress []byte, acnt vmcommon.UserAccountHandler, dctTokenKey []byte, nonce uint64, dctData *dct.DCToken, mustUpdateAllFields bool, isReturnWithError bool) ([]byte, error)
 	GetDCTNFTTokenOnSenderCalled                             func(acnt vmcommon.UserAccountHandler, dctTokenKey []byte, nonce uint64) (*dct.DCToken, error)
 	GetDCTNFTTokenOnDestinationCalled                        func(acnt vmcommon.UserAccountHandler, dctTokenKey []byte, nonce uint64) (*dct.DCToken, bool, error)
 	GetDCTNFTTokenOnDestinationWithCustomSystemAccountCalled func(accnt vmcommon.UserAccountHandler, dctTokenKey []byte, nonce uint64, systemAccount vmcommon.UserAccountHandler) (*dct.DCToken, bool, error)
@@ -20,9 +20,9 @@ type DCTNFTStorageHandlerStub struct {
 }
 
 // SaveDCTNFTToken -
-func (stub *DCTNFTStorageHandlerStub) SaveDCTNFTToken(senderAddress []byte, acnt vmcommon.UserAccountHandler, dctTokenKey []byte, nonce uint64, dctData *dct.DCToken, isCreation bool, isReturnWithError bool) ([]byte, error) {
+func (stub *DCTNFTStorageHandlerStub) SaveDCTNFTToken(senderAddress []byte, acnt vmcommon.UserAccountHandler, dctTokenKey []byte, nonce uint64, dctData *dct.DCToken, mustUpdateAllFields bool, isReturnWithError bool) ([]byte, error) {
 	if stub.SaveDCTNFTTokenCalled != nil {
-		return stub.SaveDCTNFTTokenCalled(senderAddress, acnt, dctTokenKey, nonce, dctData, isCreation, isReturnWithError)
+		return stub.SaveDCTNFTTokenCalled(senderAddress, acnt, dctTokenKey, nonce, dctData, mustUpdateAllFields, isReturnWithError)
 	}
 	return nil, nil
 }

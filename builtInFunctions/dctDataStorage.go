@@ -319,7 +319,7 @@ func (e *dctDataStorage) SaveDCTNFTToken(
 	dctTokenKey []byte,
 	nonce uint64,
 	dctData *dct.DCToken,
-	mustUpdate bool,
+	mustUpdateAllFields bool,
 	isReturnWithError bool,
 ) ([]byte, error) {
 	err := e.checkFrozenPauseProperties(acnt, dctTokenKey, nonce, dctData, isReturnWithError)
@@ -330,7 +330,7 @@ func (e *dctDataStorage) SaveDCTNFTToken(
 	dctNFTTokenKey := computeDCTNFTTokenKey(dctTokenKey, nonce)
 	senderShardID := e.shardCoordinator.ComputeId(senderAddress)
 	if e.enableEpochsHandler.IsSaveToSystemAccountFlagEnabled() {
-		err = e.saveDCTMetaDataToSystemAccount(acnt, senderShardID, dctNFTTokenKey, nonce, dctData, mustUpdate)
+		err = e.saveDCTMetaDataToSystemAccount(acnt, senderShardID, dctNFTTokenKey, nonce, dctData, mustUpdateAllFields)
 		if err != nil {
 			return nil, err
 		}
@@ -341,9 +341,9 @@ func (e *dctDataStorage) SaveDCTNFTToken(
 	}
 
 	if !e.enableEpochsHandler.IsSaveToSystemAccountFlagEnabled() {
-		marshaledData, err := e.marshaller.Marshal(dctData)
-		if err != nil {
-			return nil, err
+		marshaledData, errMarshal := e.marshaller.Marshal(dctData)
+		if errMarshal != nil {
+			return nil, errMarshal
 		}
 
 		return marshaledData, acnt.AccountDataHandler().SaveKeyValue(dctNFTTokenKey, marshaledData)
@@ -368,7 +368,7 @@ func (e *dctDataStorage) saveDCTMetaDataToSystemAccount(
 	dctNFTTokenKey []byte,
 	nonce uint64,
 	dctData *dct.DCToken,
-	mustUpdate bool,
+	mustUpdateAllFields bool,
 ) error {
 	if nonce == 0 {
 		return nil
@@ -382,8 +382,13 @@ func (e *dctDataStorage) saveDCTMetaDataToSystemAccount(
 		return err
 	}
 
-	currentSaveData, _, err := systemAcc.AccountDataHandler().RetrieveValue(dctNFTTokenKey)
-	if !mustUpdate && len(currentSaveData) > 0 {
+	currentSaveData, _, _ := systemAcc.AccountDataHandler().RetrieveValue(dctNFTTokenKey)
+	err = e.saveMetadataIfRequired(dctNFTTokenKey, systemAcc, currentSaveData, dctData)
+	if err != nil {
+		return err
+	}
+
+	if !mustUpdateAllFields && len(currentSaveData) > 0 {
 		return nil
 	}
 
@@ -414,6 +419,37 @@ func (e *dctDataStorage) saveDCTMetaDataToSystemAccount(
 		}
 	}
 
+	return e.marshalAndSaveData(systemAcc, dctDataOnSystemAcc, dctNFTTokenKey)
+}
+
+func (e *dctDataStorage) saveMetadataIfRequired(
+	dctNFTTokenKey []byte,
+	systemAcc vmcommon.UserAccountHandler,
+	currentSaveData []byte,
+	dctData *dct.DCToken,
+) error {
+	if !e.enableEpochsHandler.IsAlwaysSaveTokenMetaDataEnabled() {
+		return nil
+	}
+	if !e.enableEpochsHandler.IsSendAlwaysFlagEnabled() {
+		// do not re-write the metadata if it is not sent, as it will cause data loss
+		return nil
+	}
+	if len(currentSaveData) == 0 {
+		// optimization: do not try to write here the token metadata, it will be written automatically by the next step
+		return nil
+	}
+
+	dctDataOnSystemAcc := &dct.DCToken{}
+	err := e.marshaller.Unmarshal(dctDataOnSystemAcc, currentSaveData)
+	if err != nil {
+		return err
+	}
+	if len(dctDataOnSystemAcc.Reserved) > 0 {
+		return nil
+	}
+
+	dctDataOnSystemAcc.TokenMetaData = dctData.TokenMetaData
 	return e.marshalAndSaveData(systemAcc, dctDataOnSystemAcc, dctNFTTokenKey)
 }
 
