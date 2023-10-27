@@ -3,7 +3,7 @@ package parsers
 import (
 	"encoding/hex"
 
-	"github.com/Dharitri-org/sme-vm-common"
+	vmcommon "github.com/Dharitri-org/sme-vm-common"
 )
 
 type storageUpdatesParser struct {

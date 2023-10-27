@@ -10,7 +10,7 @@ import (
 	"github.com/Dharitri-org/sme-core/core"
 	"github.com/Dharitri-org/sme-core/core/check"
 	"github.com/Dharitri-org/sme-core/data/dct"
-	"github.com/Dharitri-org/sme-vm-common"
+	vmcommon "github.com/Dharitri-org/sme-vm-common"
 )
 
 type dctNFTMultiTransfer struct {
