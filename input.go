@@ -2,8 +2,22 @@ package vmcommon
 
 import (
 	"math/big"
+)
 
-	"github.com/Dharitri-org/sme-core/data/vm"
+// CallType specifies the type of SC invocation (in terms of asynchronicity)
+type CallType int
+
+const (
+	// DirectCall means that the call is an explicit SC invocation originating from a user Transaction
+	DirectCall CallType = iota
+
+	// AsynchronousCall means that the invocation was performed from within
+	// another SmartContract from another Shard, using asyncCall
+	AsynchronousCall
+
+	// AsynchronousCallBack means that an AsynchronousCall was performed
+	// previously, and now the control returns to the caller SmartContract's callBack method
+	AsynchronousCallBack
 )
 
 // VMInput contains the common fields between the 2 types of SC call.
@@ -18,16 +32,16 @@ type VMInput struct {
 	// the transaction will return FunctionWrongSignature ReturnCode.
 	Arguments [][]byte
 
-	// CallValue is the mOAX value (amount of tokens) transferred by the transaction.
-	// Before reaching the VM this value is subtracted from sender balance (CallerAddr)
-	// and to added to the smart contract balance.
+	// CallValue is the value (amount of tokens) transferred by the transaction.
+	// The VM knows to subtract this value from sender balance (CallerAddr)
+	// and to add it to the smart contract balance.
 	// It is often, but not always zero in SC calls.
 	CallValue *big.Int
 
 	// CallType is the type of SmartContract call
 	// Based on this value, the VM is informed of whether the call is direct,
 	// asynchronous, or asynchronous callback.
-	CallType vm.CallType
+	CallType CallType
 
 	// GasPrice multiplied by the gas burned by the transaction yields the transaction fee.
 	// A larger GasPrice will incentivize block proposers to include the transaction in a block sooner,
@@ -46,54 +60,24 @@ type VMInput struct {
 	// so it doesn't cost the sender more to have a higher gas limit.
 	GasProvided uint64
 
-	// GasLocked is the amount of gas that must be kept unused during the current
-	// call, because it will be used later for a callback. This field is only
-	// used during asynchronous calls.
-	GasLocked uint64
-
 	// OriginalTxHash
 	OriginalTxHash []byte
 
 	// CurrentTxHash
 	CurrentTxHash []byte
-
-	// PrevTxHash
-	PrevTxHash []byte
-
-	// DCTTransfers
-	DCTTransfers []*DCTTransfer
-
-	// ReturnCallAfterError
-	ReturnCallAfterError bool
-}
-
-// DCTTransfer defines the structure for and DCT / NFT transfer
-type DCTTransfer struct {
-	// DCTValue is the value (amount of tokens) transferred by the transaction.
-	// Before reaching the VM this value is subtracted from sender balance (CallerAddr)
-	// and to added to the smart contract balance.
-	// It is often, but not always zero in SC calls.
-	DCTValue *big.Int
-
-	// DCTTokenName is the name of the token which was transferred by the transaction to the SC
-	DCTTokenName []byte
-
-	// DCTTokenType is the type of the transferred token
-	DCTTokenType uint32
-
-	// DCTTokenNonce is the nonce for the given NFT token
-	DCTTokenNonce uint64
 }
 
 // ContractCreateInput VM input when creating a new contract.
 // Here we have no RecipientAddr because
-// the address (PK) of the created account will be provided by the vmcommon.
+// the address (PK) of the created account will be provided by the VM.
 // We also do not need to specify a Function field,
 // because on creation `init` is always called.
 type ContractCreateInput struct {
 	VMInput
 
 	// ContractCode is the code of the contract being created, assembled into a byte array.
+	// For Iele VM, to convert a .iele file to this assembled byte array, see
+	// src/github.com/Dharitri-org/sme-dharitri/iele/compiler/compiler.AssembleIeleCode
 	ContractCode []byte
 
 	// ContractCodeMetadata is the code metadata of the contract being created.
@@ -108,18 +92,10 @@ type ContractCallInput struct {
 	RecipientAddr []byte
 
 	// Function is the name of the smart contract function that will be called.
-	// The function must be public
+	// The function must be public (e.g. in Iele `define public @functionName(...)`)
 	Function string
 
 	// AllowInitFunction specifies whether calling the initialization method of
 	// the smart contract is allowed or not
 	AllowInitFunction bool
-}
-
-// ParsedDCTTransfers defines the struct for the parsed dct transfers
-type ParsedDCTTransfers struct {
-	DCTTransfers []*DCTTransfer
-	RcvAddr      []byte
-	CallFunction string
-	CallArgs     [][]byte
 }
