@@ -13,6 +13,9 @@ var ErrInvalidDeployArguments = errors.New("invalid deploy arguments")
 // ErrNilFunction signals that the function name from transaction data is nil
 var ErrNilFunction = errors.New("smart contract function is nil")
 
+// ErrNilArguments signals that arguments from transactions data is nil
+var ErrNilArguments = errors.New("smart contract arguments are nil")
+
 // ErrInvalidDataString signals that the transaction data string could not be split evenly
 var ErrInvalidDataString = errors.New("transaction data string is unevenly split")
 
@@ -24,12 +27,3 @@ var ErrInvalidCode = errors.New("invalid code")
 
 // ErrInvalidCodeMetadata signals an invalid Code Metadata
 var ErrInvalidCodeMetadata = errors.New("invalid code metadata")
-
-// ErrNotDCTTransferInput signals invalid DCT transfer input error
-var ErrNotDCTTransferInput = errors.New("not an DCT transfer input")
-
-// ErrNotEnoughArguments signals not enough arguments error
-var ErrNotEnoughArguments = errors.New("not enough arguments")
-
-// ErrNilMarshalizer signals that marshaller is nil
-var ErrNilMarshalizer = errors.New("nil marshaller")

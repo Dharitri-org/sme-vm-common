@@ -2,26 +2,15 @@ package vmcommon
 
 const lengthOfCodeMetadata = 2
 
-// Const group for the first byte of the metadata
 const (
-	// MetadataUpgradeable is the bit for upgradable flag
-	MetadataUpgradeable = 1
-	// MetadataReadable is the bit for readable flag
-	MetadataReadable = 4
-)
-
-// Const group for the second byte of the metadata
-const (
-	// MetadataPayable is the bit for payable flag
-	MetadataPayable = 2
-	// MetadataPayableBySC is the bit for payable flag
-	MetadataPayableBySC = 4
+	METADATA_UPGRADEABLE = 1
+	METADATA_PAYABLE     = 2
+	METADATA_READABLE    = 4
 )
 
 // CodeMetadata represents smart contract code metadata
 type CodeMetadata struct {
 	Payable     bool
-	PayableBySC bool
 	Upgradeable bool
 	Readable    bool
 }
@@ -33,10 +22,9 @@ func CodeMetadataFromBytes(bytes []byte) CodeMetadata {
 	}
 
 	return CodeMetadata{
-		Upgradeable: (bytes[0] & MetadataUpgradeable) != 0,
-		Readable:    (bytes[0] & MetadataReadable) != 0,
-		Payable:     (bytes[1] & MetadataPayable) != 0,
-		PayableBySC: (bytes[1] & MetadataPayableBySC) != 0,
+		Upgradeable: (bytes[0] & METADATA_UPGRADEABLE) != 0,
+		Readable:    (bytes[0] & METADATA_READABLE) != 0,
+		Payable:     (bytes[1] & METADATA_PAYABLE) != 0,
 	}
 }
 
@@ -45,16 +33,13 @@ func (metadata *CodeMetadata) ToBytes() []byte {
 	bytes := make([]byte, lengthOfCodeMetadata)
 
 	if metadata.Upgradeable {
-		bytes[0] |= MetadataUpgradeable
+		bytes[0] |= METADATA_UPGRADEABLE
 	}
 	if metadata.Readable {
-		bytes[0] |= MetadataReadable
+		bytes[0] |= METADATA_READABLE
 	}
 	if metadata.Payable {
-		bytes[1] |= MetadataPayable
-	}
-	if metadata.PayableBySC {
-		bytes[1] |= MetadataPayableBySC
+		bytes[1] |= METADATA_PAYABLE
 	}
 
 	return bytes
